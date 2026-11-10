@@ -8,6 +8,7 @@ export type Variant = {
 }
 
 type CreateImageData = {
+  id: string
   originalName: string
   contentType: string
   originalKey: string

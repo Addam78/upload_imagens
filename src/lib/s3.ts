@@ -2,6 +2,7 @@ import {
   S3Client,
   HeadBucketCommand,
   CreateBucketCommand,
+  PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3'
 import { env } from '../config/env.js'
 
@@ -23,4 +24,22 @@ export async function ensureBucket() {
     await s3.send(new CreateBucketCommand({ Bucket: env.S3_BUCKET }))
     console.log(`Bucket "${env.S3_BUCKET}" criado`)
   }
+
+  // leitura pública só para as versões processadas
+  await s3.send(
+    new PutBucketPolicyCommand({
+      Bucket: env.S3_BUCKET,
+      Policy: JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetObject'],
+            Resource: [`arn:aws:s3:::${env.S3_BUCKET}/processed/*`],
+          },
+        ],
+      }),
+    }),
+  )
 }

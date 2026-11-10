@@ -11,6 +11,7 @@ const envSchema = z.object({
 
   S3_ENDPOINT: z.string(),
   S3_BUCKET: z.string(),
+  S3_PUBLIC_URL: z.url(),
   S3_REGION: z.string().default('us-east-1'),
   MINIO_ROOT_USER: z.string(),
   MINIO_ROOT_PASSWORD: z.string(),
