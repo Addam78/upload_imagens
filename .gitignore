@@ -1,0 +1,21 @@
+# dependências
+node_modules/
+
+# build
+dist/
+
+# variáveis de ambiente (senhas!)
+.env
+
+# cliente gerado pelo Prisma (é recriado com "prisma generate")
+src/generated/
+
+# logs e sistema
+*.log
+.DS_Store
+Thumbs.db
+
+# yarn (se for Yarn 2+)
+.yarn/*
+!.yarn/releases
+/src/generated/prisma
