@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -20,12 +20,16 @@ services:
       - redisdata:/data
 
   minio:
-    image: minio/minio
+    # MinIO saiu do Docker Hub e do Quay; RustFS e compativel com a API S3
+    image: rustfs/rustfs:latest
     container_name: upload-minio
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER}
+      RUSTFS_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CORS_ALLOWED_ORIGINS: "*"   # o navegador envia a imagem direto para ca
     ports:
       - "9000:9000"   # API do S3
       - "9001:9001"   # painel web
