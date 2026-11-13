@@ -19,3 +19,9 @@ Thumbs.db
 .yarn/*
 !.yarn/releases
 /src/generated/prisma
+
+# skills e configs de assistentes de IA
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
