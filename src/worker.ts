@@ -1,12 +1,17 @@
 import { Worker } from 'bullmq'
 import { connection, imageQueue } from './lib/queue.js'
 import { env } from './config/env.js'
+import { prisma } from './lib/prisma.js'
+import { retry } from './lib/retry.js'
 import { processImage } from './jobs/process-image.job.js'
 import { cleanupAbandonedUploads } from './jobs/cleanup-abandoned.job.js'
 import { closeInfra, onShutdown } from './lib/shutdown.js'
 import { ImageRepository } from './repositories/image.repository.js'
 
 const imageRepository = new ImageRepository()
+
+// o banco pode ainda estar subindo (ex.: logo após um `docker compose up`)
+await retry(() => prisma.$connect(), { label: 'Conexão com o banco' })
 
 const worker = new Worker(
   'images',
@@ -38,7 +43,13 @@ worker.on('failed', async (job, error) => {
   const unrecoverable = error.name === 'UnrecoverableError'
 
   if (lastAttempt || unrecoverable) {
-    await imageRepository.markFailed(job.data.imageId, error.message)
+    try {
+      await imageRepository.markFailed(job.data.imageId, error.message)
+    } catch (markError) {
+      // se nem isso funcionar (ex.: banco fora do ar), só loga: o job já
+      // falhou de verdade, e derrubar o worker pioraria a situação
+      console.error(`Não foi possível marcar a imagem ${job.data.imageId} como FAILED:`, markError)
+    }
   }
   console.error(`Imagem ${job.data.imageId} falhou: ${error.message}`)
 })

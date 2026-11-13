@@ -21,7 +21,7 @@ services:
 
   minio:
     # MinIO saiu do Docker Hub e do Quay; RustFS e compativel com a API S3
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.5
     container_name: upload-minio
     environment:
       RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER}

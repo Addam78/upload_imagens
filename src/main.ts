@@ -5,6 +5,8 @@ import path from 'node:path'
 import { ZodError } from 'zod'
 import { env } from './config/env.js'
 import { ensureBucket } from './lib/s3.js'
+import { prisma } from './lib/prisma.js'
+import { retry } from './lib/retry.js'
 import { closeInfra, onShutdown } from './lib/shutdown.js'
 import { AppError } from './errors/app-error.js'
 import { healthRoutes } from './routes/health.routes.js'
@@ -40,7 +42,10 @@ app.setErrorHandler((error: FastifyError, _request, reply) => {
   return reply.status(500).send({ message: 'Erro interno' })
 })
 
-await ensureBucket()
+// banco e storage podem ainda estar subindo (ex.: logo após um
+// `docker compose up`), então tenta de novo por um tempo antes de desistir
+await retry(() => prisma.$connect(), { label: 'Conexão com o banco' })
+await retry(ensureBucket, { label: 'Conexão com o storage' })
 await app.listen({ port: env.PORT })
 
 // para de aceitar pedidos novos, termina os em andamento e fecha as conexões
