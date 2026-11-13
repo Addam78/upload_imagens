@@ -58,8 +58,11 @@ Status da imagem no banco:
 
 ```
 AWAITING_UPLOAD → PENDING → PROCESSING → DONE
-                                       ↘ FAILED
+        ↓                              ↘ FAILED
+     EXPIRED
 ```
+
+`EXPIRED` é o upload que pediu o link mas nunca foi concluído (ver [limpeza de uploads abandonados](#8-limpeza-de-uploads-abandonados)).
 
 ---
 
@@ -131,6 +134,38 @@ routes → controllers → services → repositories
 
 As variáveis de ambiente são validadas com Zod na inicialização: se faltar alguma, a aplicação nem sobe.
 
+### 8. Limpeza de uploads abandonados
+
+Se alguém pede o link e fecha a página antes de enviar a imagem, o registro fica em `AWAITING_UPLOAD` para sempre, e um arquivo enviado e nunca confirmado fica parado no storage.
+
+O worker agenda, pelo próprio BullMQ, uma tarefa recorrente (a cada `CLEANUP_INTERVAL_MINUTES`, padrão 10 min). Ela marca como `EXPIRED` os uploads com mais de `ABANDONED_UPLOAD_MINUTES` (padrão 60 min) e apaga o arquivo que sobrou.
+
+- **Sem corrida:** a expiração só acontece se o status ainda for `AWAITING_UPLOAD`, em uma única operação no banco. Se o front concluir o upload no meio da limpeza, nada é apagado. Concluir um upload já expirado responde `410`.
+- **Sem duplicar:** o agendamento tem um id fixo, então reiniciar o worker ou subir vários não cria tarefas repetidas.
+- **Em lotes** de 100, do mais antigo para o mais novo, usando o índice `(status, createdAt)`.
+
+### 9. CORS restrito no storage
+
+O navegador envia a imagem direto para o storage, então o storage precisa liberar o domínio do front. A lista vem de `CORS_ALLOWED_ORIGINS` (padrão `http://localhost:3333`, aceita vários separados por vírgula). A API grava a regra no bucket ao subir, o que vale também para um S3 real, e o `docker-compose.yml` repassa a mesma lista ao RustFS. Origens fora da lista recebem `403`.
+
+### 10. Rate limit
+
+Limite por IP a cada minuto, só nas rotas de imagem: 10 em `/images/upload-url`, 30 em `/images/:id/complete` e 120 em `/images/:id` (o front consulta a cada segundo). Estourou, responde `429` com o cabeçalho `Retry-After`. `/health` e a página não têm limite.
+
+O contador fica na memória da API. Com mais de uma instância, o ideal é guardá-lo no Redis. Atrás de um proxy ou balanceador, configure `trustProxy` no Fastify para o limite enxergar o IP real.
+
+### 11. Health check de verdade
+
+`GET /health` testa o Postgres, o Redis e o storage, cada um com limite de 2 s. Responde `200` se os três estão no ar, ou `503` dizendo qual caiu:
+
+```json
+{ "status": "degraded", "checks": { "database": "ok", "redis": "down", "storage": "ok" } }
+```
+
+### 12. Desligamento limpo
+
+Ao receber `SIGINT` ou `SIGTERM`, a API para de aceitar pedidos novos e termina os que estão em andamento. O worker termina o job atual, o que evita imagem presa em `PROCESSING`. Depois os dois fecham fila, Redis, banco e storage. Se passar de 10 s, o processo é encerrado à força.
+
 ---
 
 ## Stack
@@ -138,10 +173,11 @@ As variáveis de ambiente são validadas com Zod na inicialização: se faltar a
 - **Node.js + TypeScript**
 - **Fastify**: API
 - **Sharp**: redimensionamento e conversão para WebP
-- **MinIO**: storage compatível com S3 (AWS SDK v3)
+- **MinIO / RustFS**: storage compatível com S3 (AWS SDK v3). O `docker-compose.yml` usa o RustFS porque a imagem `minio/minio` saiu do Docker Hub; o serviço continua chamado `minio` e qualquer storage S3 serve
 - **PostgreSQL + Prisma 7**: metadados e status
-- **Redis + BullMQ**: fila de processamento
+- **Redis + BullMQ**: fila de processamento e tarefas agendadas
 - **Zod**: validação
+- **@fastify/rate-limit**: limite de requisições
 - **Docker Compose**: infraestrutura local
 
 ---
@@ -154,7 +190,7 @@ As variáveis de ambiente são validadas com Zod na inicialização: se faltar a
 # 1. variáveis de ambiente
 cp .env.example .env
 
-# 2. infraestrutura (Postgres, Redis e MinIO)
+# 2. infraestrutura (Postgres, Redis e storage)
 docker compose up -d
 
 # 3. dependências e banco
@@ -169,7 +205,18 @@ yarn dev:worker
 
 Abra **http://localhost:3333**, escolha uma imagem e clique em **Upload**.
 
-Painel do MinIO: **http://localhost:9001** (usuário e senha definidos no `.env`).
+Painel do storage: **http://localhost:9001** (usuário e senha definidos no `.env`).
+
+O Postgres do Docker fica na porta **5433** para não conflitar com um Postgres instalado na máquina (porta 5432).
+
+### Variáveis de ambiente opcionais
+
+| Variável | Padrão | Para quê |
+|---|---|---|
+| `MAX_UPLOAD_MB` | `20` | tamanho máximo do arquivo |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3333` | domínios do front que podem enviar para o storage |
+| `ABANDONED_UPLOAD_MINUTES` | `60` | depois disso, um upload não concluído expira (mínimo 10) |
+| `CLEANUP_INTERVAL_MINUTES` | `10` | de quanto em quanto tempo o worker procura uploads abandonados |
 
 ---
 
@@ -180,7 +227,9 @@ Painel do MinIO: **http://localhost:9001** (usuário e senha definidos no `.env`
 | `POST` | `/images/upload-url` | Valida o pedido e devolve a presigned URL |
 | `POST` | `/images/:id/complete` | Confirma o upload e coloca a imagem na fila |
 | `GET` | `/images/:id` | Status da imagem e links das versões |
-| `GET` | `/health` | Verificação básica da API |
+| `GET` | `/health` | Verifica API, banco, Redis e storage (`200` ou `503`) |
+
+Códigos que o front deve tratar: `429` (rate limit, veja `Retry-After`) e `410` (upload expirado, peça um novo link).
 
 ---
 
@@ -188,12 +237,10 @@ Painel do MinIO: **http://localhost:9001** (usuário e senha definidos no `.env`
 
 O projeto foi feito como estudo de arquitetura. Para produção, ainda seriam necessários:
 
-- **Autenticação** e **rate limit** nas rotas de upload
-- **Limpeza de uploads abandonados** (status `EXPIRED`) e lifecycle rule para as originais
+- **Autenticação** nas rotas de upload
+- **Lifecycle rule** no bucket para as originais
 - **Usuário próprio no storage**, com permissões mínimas, em vez do usuário root
-- **CORS** configurado no bucket para o domínio do front (em um S3 real)
-- **Health check** conferindo banco, Redis e storage
-- **Desligamento limpo** (fechar servidor, fila e conexões)
+- **Rate limit no Redis**, para valer entre várias instâncias da API
 - **Testes** e **monitoramento**
 - **Notificação em tempo real** (WebSocket ou SSE) no lugar da consulta a cada segundo
 - Suporte a **outros tipos de arquivo**, como compressão de PDF, adicionando novos jobs no worker
