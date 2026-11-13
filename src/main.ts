@@ -4,6 +4,7 @@ import path from 'node:path'
 import { ZodError } from 'zod'
 import { env } from './config/env.js'
 import { ensureBucket } from './lib/s3.js'
+import { closeInfra, onShutdown } from './lib/shutdown.js'
 import { AppError } from './errors/app-error.js'
 import { imageRoutes } from './routes/image.routes.js'
 
@@ -29,4 +30,10 @@ app.setErrorHandler((error, _request, reply) => {
 })
 
 await ensureBucket()
-app.listen({ port: env.PORT })
+await app.listen({ port: env.PORT })
+
+// para de aceitar pedidos novos, termina os em andamento e fecha as conexões
+onShutdown(async () => {
+  await app.close()
+  await closeInfra()
+})

@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq'
 import { connection } from './lib/queue.js'
 import { processImage } from './jobs/process-image.job.js'
+import { closeInfra, onShutdown } from './lib/shutdown.js'
 import { ImageRepository } from './repositories/image.repository.js'
 
 const imageRepository = new ImageRepository()
@@ -28,3 +29,9 @@ worker.on('failed', async (job, error) => {
 })
 
 console.log('Worker rodando, aguardando pedidos...')
+
+// termina o job em andamento antes de fechar, para não deixar imagem em PROCESSING
+onShutdown(async () => {
+  await worker.close()
+  await closeInfra()
+})
