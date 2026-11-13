@@ -1,6 +1,8 @@
 import { Worker } from 'bullmq'
-import { connection } from './lib/queue.js'
+import { connection, imageQueue } from './lib/queue.js'
+import { env } from './config/env.js'
 import { processImage } from './jobs/process-image.job.js'
+import { cleanupAbandonedUploads } from './jobs/cleanup-abandoned.job.js'
 import { closeInfra, onShutdown } from './lib/shutdown.js'
 import { ImageRepository } from './repositories/image.repository.js'
 
@@ -8,16 +10,29 @@ const imageRepository = new ImageRepository()
 
 const worker = new Worker(
   'images',
-  async (job) => processImage(job.data.imageId),
+  async (job) => {
+    if (job.name === 'cleanup') {
+      const cleaned = await cleanupAbandonedUploads()
+      if (cleaned > 0) console.log(`Limpeza: ${cleaned} upload(s) abandonado(s) expirado(s)`)
+      return
+    }
+    return processImage(job.data.imageId)
+  },
   { connection, concurrency: 2 },
 )
 
 worker.on('completed', (job) => {
+  if (job.name !== 'process') return
   console.log(`Imagem ${job.data.imageId} processada`)
 })
 
 worker.on('failed', async (job, error) => {
   if (!job) return
+
+  if (job.name !== 'process') {
+    console.error(`Tarefa ${job.name} falhou: ${error.message}`)
+    return
+  }
 
   const lastAttempt = job.attemptsMade >= (job.opts.attempts ?? 1)
   const unrecoverable = error.name === 'UnrecoverableError'
@@ -27,6 +42,14 @@ worker.on('failed', async (job, error) => {
   }
   console.error(`Imagem ${job.data.imageId} falhou: ${error.message}`)
 })
+
+// agenda a limpeza de uploads abandonados. O id fixo evita duplicar o
+// agendamento quando o worker reinicia ou há mais de um rodando.
+await imageQueue.upsertJobScheduler(
+  'cleanup-abandoned',
+  { every: env.CLEANUP_INTERVAL_MINUTES * 60_000 },
+  { name: 'cleanup', opts: { removeOnComplete: true, removeOnFail: 20 } },
+)
 
 console.log('Worker rodando, aguardando pedidos...')
 

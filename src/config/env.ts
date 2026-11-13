@@ -18,6 +18,11 @@ const envSchema = z.object({
 
   MAX_UPLOAD_MB: z.coerce.number().default(20),
 
+  // upload que não foi concluído depois desse tempo vira EXPIRED e perde o arquivo
+  ABANDONED_UPLOAD_MINUTES: z.coerce.number().int().min(10).default(60),
+  // de quanto em quanto tempo o worker procura uploads abandonados
+  CLEANUP_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(10),
+
   // domínios do front que podem enviar arquivo para o storage, separados por vírgula
   CORS_ALLOWED_ORIGINS: z
     .string()

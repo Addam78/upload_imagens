@@ -60,6 +60,9 @@ export class ImageService {
     if (!image) {
       throw new AppError('Imagem não encontrada', 404)
     }
+    if (image.status === 'EXPIRED') {
+      throw new AppError('Upload expirado, envie a imagem novamente', 410)
+    }
     if (image.status !== 'AWAITING_UPLOAD') {
       throw new AppError('Upload já foi finalizado', 409)
     }

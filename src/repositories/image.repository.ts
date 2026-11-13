@@ -44,6 +44,26 @@ export class ImageRepository {
     })
   }
 
+  // uploads que pediram o link mas nunca foram concluídos, os mais antigos primeiro
+  async findAbandoned(before: Date, limit: number) {
+    return prisma.image.findMany({
+      where: { status: 'AWAITING_UPLOAD', createdAt: { lt: before } },
+      select: { id: true, originalKey: true },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    })
+  }
+
+  // só expira se ainda estiver aguardando, para não atropelar um upload
+  // concluído no meio da limpeza. Devolve false se perdeu essa corrida.
+  async markExpired(id: string) {
+    const { count } = await prisma.image.updateMany({
+      where: { id, status: 'AWAITING_UPLOAD' },
+      data: { status: 'EXPIRED' },
+    })
+    return count === 1
+  }
+
   async markFailed(id: string, error: string) {
     return prisma.image.update({
       where: { id },
