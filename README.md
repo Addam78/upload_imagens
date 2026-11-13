@@ -2,8 +2,7 @@
 
 Serviço backend que recebe imagens e gera versões otimizadas delas em três tamanhos, no formato WebP. O upload vai direto para o storage e o processamento acontece em segundo plano, então a API não carrega arquivos nem fica lenta com o processamento.
 
-<!-- Adicione aqui um print da tela com o resultado -->
-<!-- ![Resultado](docs/resultado.png) -->
+![Resultado: imagem original de 463,7 KB e as três versões geradas em WebP](docs/resultado.jpg)
 
 ---
 
