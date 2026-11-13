@@ -17,6 +17,17 @@ const envSchema = z.object({
   MINIO_ROOT_PASSWORD: z.string(),
 
   MAX_UPLOAD_MB: z.coerce.number().default(20),
+
+  // domínios do front que podem enviar arquivo para o storage, separados por vírgula
+  CORS_ALLOWED_ORIGINS: z
+    .string()
+    .default('http://localhost:3333')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    ),
 })
 
 const parsed = envSchema.safeParse(process.env)

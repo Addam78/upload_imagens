@@ -3,6 +3,7 @@ import {
   HeadBucketCommand,
   CreateBucketCommand,
   PutBucketPolicyCommand,
+  PutBucketCorsCommand,
 } from '@aws-sdk/client-s3'
 import { env } from '../config/env.js'
 
@@ -23,6 +24,30 @@ export async function ensureBucket() {
   } catch {
     await s3.send(new CreateBucketCommand({ Bucket: env.S3_BUCKET }))
     console.log(`Bucket "${env.S3_BUCKET}" criado`)
+  }
+
+  // o navegador envia a imagem direto para o storage, então só os
+  // domínios do front podem fazer isso
+  try {
+    await s3.send(
+      new PutBucketCorsCommand({
+        Bucket: env.S3_BUCKET,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: env.CORS_ALLOWED_ORIGINS,
+              AllowedMethods: ['GET', 'HEAD', 'POST'],
+              AllowedHeaders: ['*'],
+              ExposeHeaders: ['ETag'],
+              MaxAgeSeconds: 3000,
+            },
+          ],
+        },
+      }),
+    )
+  } catch (error) {
+    // nem todo storage compatível com S3 aceita configurar CORS pelo bucket
+    console.warn('Não foi possível configurar o CORS do bucket:', (error as Error).message)
   }
 
   // leitura pública só para as versões processadas
