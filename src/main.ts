@@ -6,6 +6,7 @@ import { env } from './config/env.js'
 import { ensureBucket } from './lib/s3.js'
 import { closeInfra, onShutdown } from './lib/shutdown.js'
 import { AppError } from './errors/app-error.js'
+import { healthRoutes } from './routes/health.routes.js'
 import { imageRoutes } from './routes/image.routes.js'
 
 const app = Fastify({ logger: true })
@@ -15,7 +16,7 @@ app.register(fastifyStatic, {
   root: path.join(process.cwd(), 'web'),
 })
 
-app.get('/health', async () => ({ status: 'ok' }))
+app.register(healthRoutes)
 app.register(imageRoutes)
 
 app.setErrorHandler((error, _request, reply) => {
