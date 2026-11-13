@@ -1,5 +1,6 @@
-import Fastify from 'fastify'
+import Fastify, { type FastifyError } from 'fastify'
 import fastifyStatic from '@fastify/static'
+import rateLimit from '@fastify/rate-limit'
 import path from 'node:path'
 import { ZodError } from 'zod'
 import { env } from './config/env.js'
@@ -16,15 +17,24 @@ app.register(fastifyStatic, {
   root: path.join(process.cwd(), 'web'),
 })
 
+// global: false, cada rota define o próprio limite (health e página ficam livres)
+app.register(rateLimit, { global: false })
+
 app.register(healthRoutes)
 app.register(imageRoutes)
 
-app.setErrorHandler((error, _request, reply) => {
+app.setErrorHandler((error: FastifyError, _request, reply) => {
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({ message: error.message })
   }
   if (error instanceof ZodError) {
     return reply.status(400).send({ message: 'Dados inválidos', issues: error.issues })
+  }
+  if (error.statusCode === 429) {
+    return reply.status(429).send({ message: 'Muitas requisições, tente novamente em instantes' })
+  }
+  if (error.statusCode && error.statusCode < 500) {
+    return reply.status(error.statusCode).send({ message: error.message })
   }
   app.log.error(error)
   return reply.status(500).send({ message: 'Erro interno' })
