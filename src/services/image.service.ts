@@ -21,7 +21,6 @@ export class ImageService {
   async createUpload({ filename, contentType, size }: CreateUploadInput) {
     const maxBytes = env.MAX_UPLOAD_MB * 1024 * 1024
 
-    // 1 e 2: regras
     if (!ALLOWED_TYPES.includes(contentType)) {
       throw new AppError('Tipo de arquivo não permitido')
     }
@@ -29,7 +28,6 @@ export class ImageService {
       throw new AppError(`Arquivo maior que ${env.MAX_UPLOAD_MB} MB`)
     }
 
-    // 3: salva no banco
     const id = randomUUID()
     const key = `originals/${id}`
 
@@ -40,7 +38,6 @@ export class ImageService {
       originalKey: key,
     })
 
-    // 4: gera o link
     const { url, fields } = await createPresignedPost(s3, {
       Bucket: env.S3_BUCKET,
       Key: key,
