@@ -27,7 +27,7 @@ O serviço recebe a imagem original e gera três versões:
 | `medium` | 800px | telas de celular |
 | `large` | 1600px | telas de computador, imagem ampliada |
 
-Todas em **WebP**, com qualidade entre 75 e 80. Em um teste com uma imagem de 141,7 KB, a versão `thumb` ficou com **1,5 KB (99% menor)**.
+Todas em **WebP**, com qualidade entre 75 e 80. Em um teste com uma foto de 463,7 KB, a versão `thumb` ficou com **4,3 KB (99,1% menor)**, a `medium` com 118,6 KB e a `large` com 322,8 KB.
 
 ---
 
@@ -37,7 +37,7 @@ Todas em **WebP**, com qualidade entre 75 e 80. Em um teste com uma imagem de 14
 sequenceDiagram
     participant F as Front
     participant A as API
-    participant M as MinIO (S3)
+    participant M as Storage (S3)
     participant R as Redis (fila)
     participant W as Worker
 
@@ -100,7 +100,7 @@ Por isso, a API só registra um pedido na fila e responde na hora (`202 Accepted
 
 ### 3. Storage para arquivos, banco para metadados
 
-As imagens ficam no **MinIO** (compatível com S3) e o **Postgres** guarda só os metadados: nome, tipo, tamanho, status e caminho dos arquivos. Guardar arquivos no banco deixaria as consultas e os backups pesados.
+As imagens ficam em um **storage compatível com S3** (MinIO ou RustFS) e o **Postgres** guarda só os metadados: nome, tipo, tamanho, status e caminho dos arquivos. Guardar arquivos no banco deixaria as consultas e os backups pesados.
 
 Só a pasta `processed/` tem leitura pública. As imagens originais continuam privadas.
 
@@ -165,6 +165,10 @@ O contador fica na memória da API. Com mais de uma instância, o ideal é guard
 
 Ao receber `SIGINT` ou `SIGTERM`, a API para de aceitar pedidos novos e termina os que estão em andamento. O worker termina o job atual, o que evita imagem presa em `PROCESSING`. Depois os dois fecham fila, Redis, banco e storage. Se passar de 10 s, o processo é encerrado à força.
 
+### 13. Retry na subida
+
+Logo após um `docker compose up`, o banco e o storage ainda podem estar iniciando. Em vez de cair na primeira falha, a API tenta conectar ao banco e ao storage até 5 vezes, com 2 s de espera entre as tentativas, e o worker faz o mesmo com o banco. Se todas falharem, o erro original aparece e o processo encerra.
+
 ---
 
 ## Stack
@@ -200,6 +204,13 @@ yarn prisma generate
 # 4. API e worker (em dois terminais)
 yarn dev
 yarn dev:worker
+```
+
+Para rodar a versão compilada (gerada em `dist/`):
+
+```bash
+yarn build
+yarn start
 ```
 
 Abra **http://localhost:3333**, escolha uma imagem e clique em **Upload**.
