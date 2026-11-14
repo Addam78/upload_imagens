@@ -234,7 +234,7 @@ Códigos que o front deve tratar: `429` (rate limit, veja `Retry-After`) e `410`
 
 ## Próximos passos
 
-O projeto foi feito como estudo de arquitetura. Para produção, ainda seriam necessários:
+Projeto de portfólio com foco em arquitetura. Para um uso em produção, ainda seriam necessários:
 
 - **Autenticação** nas rotas de upload
 - **Lifecycle rule** no bucket para as originais
