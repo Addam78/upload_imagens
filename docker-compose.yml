@@ -36,6 +36,24 @@ services:
     volumes:
       - miniodata:/data
 
+  # 2 réplicas: se uma cair, a outra continua e pega o job travado.
+  # restart: o Docker sobe de novo quem caiu.
+  worker:
+    build: .
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    env_file: .env
+    environment:
+      # dentro do Docker os serviços se acham pelo nome, não por localhost
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_HOST: redis
+      S3_ENDPOINT: http://minio:9000
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
 volumes:
   pgdata:
   redisdata:
